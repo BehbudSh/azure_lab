@@ -22,6 +22,12 @@
     },
     "vmExtensionName": {
       "value": "AntiMalware"
+    },
+    "dmz-srv1PIPDnsName": {
+      "value": "dmz1"
+    },
+    "dmz-srv2PIPDnsName": {
+      "value": "dmz2"
     }
   }
 }
