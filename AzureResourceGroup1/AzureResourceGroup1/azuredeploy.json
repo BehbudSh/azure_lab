@@ -1,0 +1,458 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "acstdstorType": {
+      "type": "string",
+      "defaultValue": "Standard_LRS",
+      "allowedValues": [
+        "Standard_LRS",
+        "Standard_ZRS",
+        "Standard_GRS",
+        "Standard_RAGRS",
+        "Premium_LRS"
+      ]
+    },
+    "dmz-srv1Name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "AdminUserName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "AdminPassword": {
+      "type": "securestring"
+    },
+    "dmz-srv1WindowsOSVersion": {
+      "type": "string",
+      "defaultValue": "2012-R2-Datacenter",
+      "allowedValues": [
+        "2008-R2-SP1",
+        "2012-Datacenter",
+        "2012-R2-Datacenter",
+        "Windows-Server-Technical-Preview",
+        "2016-Datacenter"
+      ]
+    },
+    "dmz-srv2Name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "vmExtensionName": {
+      "type": "string"
+    },
+    "dmz-srv2WindowsOSVersion": {
+      "type": "string",
+      "defaultValue": "2012-R2-Datacenter",
+      "allowedValues": [
+        "2008-R2-SP1",
+        "2012-Datacenter",
+        "2012-R2-Datacenter",
+        "Windows-Server-Technical-Preview",
+        "2019-Datacenter"
+      ]
+    },
+    "dmz-srv1PIPDnsName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "dmz-srv2PIPDnsName": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "variables": {
+    "acstdstorName": "[concat('acstdstor', uniqueString(resourceGroup().id))]",
+    "networkSecurityGroupNAme": "mynsg",
+    "CompanyVnetPrefix": "10.0.0.0/22",
+    "CompanyVnetSubnet1Name": "Perimeter",
+    "CompanyVnetSubnet1Prefix": "10.0.2.0/28",
+    "CompanyVnetSubnet2Name": "Guests",
+    "CompanyVnetSubnet2Prefix": "10.0.3.0/28",
+    "dmz-srv1ImagePublisher": "MicrosoftWindowsServer",
+    "dmz-srv1ImageOffer": "WindowsServer",
+    "dmz-srv1OSDiskName": "dmz-srv1OSDisk",
+    "dmz-srv1VmSize": "Standard_A2_v2",
+    "dmz-srv1VnetID": "[resourceId('Microsoft.Network/virtualNetworks', 'CompanyVnet')]",
+    "dmz-srv1SubnetRef": "[concat(variables('dmz-srv1VnetID'), '/subnets/', variables('CompanyVnetSubnet1Name'))]",
+    "dmz-srv1StorageAccountContainerName": "vhds",
+    "dmz-srv1NicName": "[concat(parameters('dmz-srv1Name'), 'NetworkInterface')]",
+    "dmz-srv2ImagePublisher": "MicrosoftWindowsServer",
+    "dmz-srv2ImageOffer": "WindowsServer",
+    "dmz-srv2OSDiskName": "dmz-srv2OSDisk",
+    "dmz-srv2VmSize": "Standard_A2_v2",
+    "dmz-srv2VnetID": "[resourceId('Microsoft.Network/virtualNetworks', 'CompanyVnet')]",
+    "dmz-srv2SubnetRef": "[concat(variables('dmz-srv2VnetID'), '/subnets/', variables('CompanyVnetSubnet2Name'))]",
+    "dmz-srv2StorageAccountContainerName": "vhds",
+    "dmz-srv2NicName": "[concat(parameters('dmz-srv2Name'), 'NetworkInterface')]",
+    "dmz-srv1PIPName": "dmz-srv1PIP",
+    "dmz-srv2PIPName": "dmz-srv2PIP"
+  },
+  "resources": [
+    {
+      "name": "[variables('acstdstorName')]",
+      "type": "Microsoft.Storage/storageAccounts",
+      "location": "[resourceGroup().location]",
+      "apiVersion": "2018-02-01",
+      "sku": {
+        "name": "[parameters('acstdstorType')]"
+      },
+      "dependsOn": [],
+      "tags": {
+        "displayName": "acstdstor"
+      },
+      "kind": "StorageV2",
+      "properties": {
+        "accessTier": "Hot"
+      }
+    },
+    {
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "apiVersion": "2018-12-01",
+      "name": "[variables('networkSecurityGroupNAme')]",
+      "location": "[resourceGroup().location]",
+      "dependsOn": [],
+      "properties": {
+        "securityRules": [
+          {
+            "name": "VmAllowedPorts",
+            "properties": {
+              "description": "Allow Multiple Ports",
+              "sourceAddressPrefix": "*",
+              "destinationAddressPrefix": "*",
+              "sourcePortRange": "*",
+              "destinationPortRanges": [
+                "80",
+                "443",
+                "22",
+                "3389"
+              ],
+              "access": "Allow",
+              "direction": "Inbound",
+              "protocol": "Tcp",
+              "priority": 100
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "CompanyVnet",
+      "type": "Microsoft.Network/virtualNetworks",
+      "location": "[resourceGroup().location]",
+      "apiVersion": "2018-12-01",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkSecurityGroups', variables('networkSecurityGroupName'))]"
+      ],
+      "tags": {
+        "displayName": "CompanyVnet"
+      },
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "[variables('CompanyVnetPrefix')]"
+          ]
+        },
+        "subnets": [
+          {
+            "name": "[variables('CompanyVnetSubnet1Name')]",
+            "properties": {
+              "addressPrefix": "[variables('CompanyVnetSubnet1Prefix')]",
+              "networkSecurityGroup": {
+                "id": "[resourceId('Microsoft.Network/networkSecurityGroups' ,variables('networkSecurityGroupName'))]"
+              }
+            }
+          },
+          {
+            "name": "[variables('CompanyVnetSubnet2Name')]",
+            "properties": {
+              "addressPrefix": "[variables('CompanyVnetSubnet2Prefix')]",
+              "networkSecurityGroup": {
+                "id": "[resourceId('Microsoft.Network/networkSecurityGroups' ,variables('networkSecurityGroupName'))]"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "[variables('dmz-srv1NicName')]",
+      "type": "Microsoft.Network/networkInterfaces",
+      "location": "[resourceGroup().location]",
+      "apiVersion": "2016-03-30",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks', 'CompanyVnet')]",
+        "[resourceId('Microsoft.Network/publicIPAddresses', variables('dmz-srv1PIPName'))]"
+      ],
+      "tags": {
+        "displayName": "dmz-srv1Nic"
+      },
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ipconfig1",
+            "properties": {
+              "privateIPAllocationMethod": "Dynamic",
+              "subnet": {
+                "id": "[variables('dmz-srv1SubnetRef')]"
+              },
+              "publicIPAddress": {
+                "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('dmz-srv1PIPName'))]"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "[parameters('dmz-srv1Name')]",
+      "type": "Microsoft.Compute/virtualMachines",
+      "location": "[resourceGroup().location]",
+      "apiVersion": "2018-10-01",
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('acstdstorName'))]",
+        "[resourceId('Microsoft.Network/networkInterfaces', variables('dmz-srv1NicName'))]"
+      ],
+      "tags": {
+        "displayName": "dmz-srv1"
+      },
+      "properties": {
+        "hardwareProfile": {
+          "vmSize": "[variables('dmz-srv1VmSize')]"
+        },
+        "osProfile": {
+          "computerName": "[parameters('dmz-srv1Name')]",
+          "adminUsername": "[parameters('AdminUsername')]",
+          "adminPassword": "[parameters('AdminPassword')]"
+        },
+        "storageProfile": {
+          "imageReference": {
+            "publisher": "[variables('dmz-srv1ImagePublisher')]",
+            "offer": "[variables('dmz-srv1ImageOffer')]",
+            "sku": "[parameters('dmz-srv1WindowsOSVersion')]",
+            "version": "latest"
+          },
+          "osDisk": {
+            "name": "dmz-srv1OSDisk",
+            "managedDisk": {
+              "storageAccountType": "StandardSSD_LRS"
+            },
+            "caching": "ReadWrite",
+            "createOption": "FromImage"
+          },
+          "dataDisks": [
+            {
+              "name": "dmz-srv1DataDisk",
+              "managedDisk": {
+                "storageAccountType": "StandardSSD_LRS"
+              },
+              "createOption": "Empty",
+              "lun": 0,
+              "diskSizeGB": 200
+            }
+          ]
+
+        },
+        "diagnosticsProfile": {
+          "bootDiagnostics": {
+            "enabled": true,
+            "storageUri": "[concat('https://', variables('acstdstorName'), '.blob.core.windows.net/')]"
+          }
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('dmz-srv1NicName'))]"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines/extensions",
+      "name": "[concat(parameters('dmz-srv1Name'),'/', parameters('vmExtensionName'))]",
+      "apiVersion": "2015-05-01-preview",
+      "location": "[resourceGroup().location]",
+      "dependsOn": [
+        "[concat('Microsoft.Compute/virtualMachines/', parameters('dmz-srv1Name'))]"
+      ],
+      "properties": {
+        "publisher": "Microsoft.Azure.Security",
+        "type": "IaaSAntimalware",
+        "typeHandlerVersion": "1.5",
+        "settings": {
+          "AntimalwareEnabled": "true",
+          "Exclusions": {
+            "Paths": "C:\\Users",
+            "Extensions": ".txt",
+            "Processes": "taskmgr.exe"
+          },
+          "RealtimeProtectionEnabled": "true",
+          "ScheduledScanSettings": {
+            "isEnabled": "true",
+            "scanType": "Quick",
+            "day": "7",
+            "time": "120"
+          }
+        },
+        "protectedSettings": null
+      }
+    },
+    {
+      "name": "[variables('dmz-srv2NicName')]",
+      "type": "Microsoft.Network/networkInterfaces",
+      "location": "[resourceGroup().location]",
+      "apiVersion": "2016-03-30",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks', 'CompanyVnet')]",
+        "[resourceId('Microsoft.Network/publicIPAddresses', variables('dmz-srv2PIPName'))]"
+      ],
+      "tags": {
+        "displayName": "dmz-srv2Nic"
+      },
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ipconfig1",
+            "properties": {
+              "privateIPAllocationMethod": "Dynamic",
+              "subnet": {
+                "id": "[variables('dmz-srv2SubnetRef')]"
+              },
+              "publicIPAddress": {
+                "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('dmz-srv2PIPName'))]"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "[parameters('dmz-srv2Name')]",
+      "type": "Microsoft.Compute/virtualMachines",
+      "location": "[resourceGroup().location]",
+      "apiVersion": "2018-10-01",
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('acstdstorName'))]",
+        "[resourceId('Microsoft.Network/networkInterfaces', variables('dmz-srv2NicName'))]"
+      ],
+      "tags": {
+        "displayName": "dmz-srv2"
+      },
+      "properties": {
+        "hardwareProfile": {
+          "vmSize": "[variables('dmz-srv2VmSize')]"
+        },
+        "osProfile": {
+          "computerName": "[parameters('dmz-srv2Name')]",
+          "adminUsername": "[parameters('AdminUsername')]",
+          "adminPassword": "[parameters('AdminPassword')]"
+        },
+        "storageProfile": {
+          "imageReference": {
+            "publisher": "[variables('dmz-srv2ImagePublisher')]",
+            "offer": "[variables('dmz-srv2ImageOffer')]",
+            "sku": "[parameters('dmz-srv2WindowsOSVersion')]",
+            "version": "latest"
+          },
+          "osDisk": {
+            "name": "dmz-srv2OSDisk",
+            "managedDisk": {
+              "storageAccountType": "StandardSSD_LRS"
+            },
+            "caching": "ReadWrite",
+            "createOption": "FromImage"
+          },
+          "dataDisks": [
+            {
+              "name": "dmz-srv2DataDisk",
+              "managedDisk": {
+                "storageAccountType": "StandardSSD_LRS"
+              },
+              "createOption": "Empty",
+              "lun": 0,
+              "diskSizeGB": 200
+            }
+          ]
+        },
+        "diagnosticsProfile": {
+          "bootDiagnostics": {
+            "enabled": true,
+            "storageUri": "[concat('https://', variables('acstdstorName'), '.blob.core.windows.net/')]"
+          }
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('dmz-srv2NicName'))]"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines/extensions",
+      "name": "[concat(parameters('dmz-srv2Name'),'/', parameters('vmExtensionName'))]",
+      "apiVersion": "2015-05-01-preview",
+      "location": "[resourceGroup().location]",
+      "dependsOn": [
+        "[concat('Microsoft.Compute/virtualMachines/', parameters('dmz-srv2Name'))]"
+      ],
+      "properties": {
+        "publisher": "Microsoft.Azure.Security",
+        "type": "IaaSAntimalware",
+        "typeHandlerVersion": "1.5",
+        "settings": {
+          "AntimalwareEnabled": "true",
+          "Exclusions": {
+            "Paths": "C:\\Users",
+            "Extensions": ".txt",
+            "Processes": "taskmgr.exe"
+          },
+          "RealtimeProtectionEnabled": "true",
+          "ScheduledScanSettings": {
+            "isEnabled": "true",
+            "scanType": "Quick",
+            "day": "7",
+            "time": "120"
+          }
+        },
+        "protectedSettings": null
+      }
+    },
+    {
+      "name": "[variables('dmz-srv1PIPName')]",
+      "type": "Microsoft.Network/publicIPAddresses",
+      "location": "[resourceGroup().location]",
+      "apiVersion": "2018-12-01",
+      "dependsOn": [ ],
+      "tags": {
+        "displayName": "dmz-srv1PIP"
+      },
+      "properties": {
+        "publicIPAllocationMethod": "Dynamic",
+        "dnsSettings": {
+          "domainNameLabel": "[parameters('dmz-srv1PIPDnsName')]"
+        }
+      }
+    },
+    {
+      "name": "[variables('dmz-srv2PIPName')]",
+      "type": "Microsoft.Network/publicIPAddresses",
+      "location": "[resourceGroup().location]",
+      "apiVersion": "2018-12-01",
+      "dependsOn": [ ],
+      "tags": {
+        "displayName": "dmz-srv2PIP"
+      },
+      "properties": {
+        "publicIPAllocationMethod": "Dynamic",
+        "dnsSettings": {
+          "domainNameLabel": "[parameters('dmz-srv2PIPDnsName')]"
+        }
+      }
+    }
+  ],
+  "outputs": {}
+}
