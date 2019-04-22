@@ -12,7 +12,7 @@
       "value": "Behbud"
     },
     "AdminPassword": {
-      "value": "B123456b"
+      "value": "#{adminpassword}#"
     },
     "dmz-srv1WindowsOSVersion": {
       "value": "2016-Datacenter"
